@@ -12,10 +12,13 @@ I ran a 5v line to the key and ran it back to both pin 2 and ground (via an RC c
 but is easily put in perf board.   Won't quite fit in an altoids tin.
 
 The output looks a little like 
-________________
-1_______________
-when it detects a pause after a button push and when the pause gets long enough, it will look like this for a few seconds (supposing a --.- was keyed in)
-3313______q_____
-3_______________ and after a few seconds the bottom "3" disappears.
+"------------" on the first line and  "1-----------" on the second after a dit is keyed,
 
-Would like to use the remainder of that bottom line to put a couple characters in, like "cq cq de abc1efg" or something, but that will take some though.
+when the pause afer a button/key push is long enough, it will look try to find an associated character and the output will have something like
+"3313------q---"  on the first line and "3---------------" on the second line.  after a few seconds the bottom "3" disappears.
+
+If there's no match for a symbol (maybe "----" got keyed in), it would display "3333------n/a---" on the first line.   Have used upper case B, and L to help 
+prevent confusion with the numbers 6 and 1, plus lowercase "o" vs zero "0" 
+
+Would like to use the remainder of that bottom line to put a couple characters in, like "cq cq de abc1efg" or something, but that will take some thought.
+
