@@ -20,6 +20,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Written for Adafruit Itsybitsy, but it ought to work on most boards that support 
+CircuitPython.  Will have to watch for the pinouts and make sure the capacitive touch 
+pins exist and are mapped correctly.   
+Known issues:
+1.  The Itsybitsy resets periodically.  May be because of print calls.
+2.  The Itsybitsy seems to need to be mounted as a file system before use.  kind of limiting
+3. Backspace, carriage return, and manual space not yet implemented.
 """
 import time
 import re
