@@ -1,4 +1,6 @@
 # hamStuff
+A loose collection of things related to ham radio, including a couple of "keyboards" that generate keystrokes based on a straight key input.   Some of these are purely prototype phase, but I like parts of the algorithms enough to put them here.  That's maybe not a great reason but ...
+
 Cw Parser
 Using an OSEPP (other brands ought to work just fine - this is what I had handy) 16x2 LCD shield on an Arduino Uno,
 wanted to make a thing to practice morse code timing and getting the sound associated with the symbol.
