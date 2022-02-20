@@ -78,13 +78,10 @@ const char txt[SYMBOL_COUNT] = {'e', 't', 'i', 'a', 'n', 'm', 's', 'u', 'r', 'w'
                                };
 
 unsigned long last_minor = 0;
-unsigned long last_middle = 0;
-unsigned long last_major = 0;
 unsigned long keyPressTime = 0;
 unsigned long silentTime = 0;
 unsigned int assertedKeys = 0;
 char prev_char = '^';
-boolean call20 = false;
 
 unsigned long morseChar = 0;
 unsigned long framingSym = 0x00;
@@ -93,14 +90,18 @@ int prevLatch = 0x00;
 void setup() {
   // put your setup code here, to run once:
   pinMode(MORSE_PIN, INPUT_PULLUP);
-  pinMode(SHIFT_PIN, INPUT);
-  pinMode(CR_PIN, INPUT);
-  pinMode(BACKSPACE_PIN, INPUT);
+//  pinMode(SHIFT_PIN, INPUT);
+//  pinMode(CR_PIN, INPUT);
+//  pinMode(BACKSPACE_PIN, INPUT);
   pinMode(ledPin, OUTPUT);
-  Serial.begin(9600);
+//  Serial.begin(9600);
   //Keyboard.begin();
 }
 
+/*************************************************
+*  Binary search algorithm.  Probably something more efficient
+*  in a library somewhere, but these are kind of fun to write.
+ */
 char map_to_char(int input_symbol) {
   int i = 0;
   int top = SYMBOL_COUNT - 1;
@@ -131,6 +132,7 @@ char map_to_char(int input_symbol) {
   return return_value;
 }
 
+/*************************************************/
 char minor_frame(void) {
   unsigned long prevSilent = silentTime;
   unsigned long prevPressTime = keyPressTime;
@@ -155,9 +157,9 @@ char minor_frame(void) {
       }
       keyPressTime = 0;
     }
-    else if (keyPressTime == 0) {
-      if (silentTime < WORDGAP) silentTime += FRAME1;
-    }
+//    else if (keyPressTime == 0) {
+//      if (silentTime < WORDGAP) silentTime += FRAME1;
+//    }
     if ((silentTime >= DAH) && (prevSilent < DAH)) {
   
       // push a framing symbol into the character we are building.
@@ -180,25 +182,15 @@ char minor_frame(void) {
   return("*");
 }
 
-char twentyMS(void) {
-}
-int put_keyboard (char whatKey) {
-  //if (assertedKeys & RETURN_KEY)  Keyboard.print("\n");
-  //if (assertedKeys & BACK_KEY)
-    return 0;
-}
-
+/* the main loop calls a "minor frame" at typically 10ms.   
+ *  We can add other calls at (for example) 50 and 100ms for processing
+ *  the other "special" keys (cr, backspace, etc), or reading a switch and acting as
+ *  a keyer for iambic paddles instead.  Lots of possiilities.
+ */
 void loop() {
   unsigned long currentMillis = millis();
   if (currentMillis - last_minor >= FRAME1) {
     last_minor = currentMillis;
     char kb_char = minor_frame();
   }
-  if (currentMillis - last_middle >= 2 * FRAME1) {
-    last_middle = currentMillis;
-  }
-  if (currentMillis - last_major >= 5 * FRAME1) {
-    last_major = currentMillis;
-  }
-
 }
