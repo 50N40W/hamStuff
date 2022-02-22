@@ -33,13 +33,15 @@
  *     
  */
 //  bitmap definition for keyboard output
-//  Low byte
+//  Low byte  (high byte not yet defined)
 //  high nibble                   |     low nibble
 // bit:  7  ,    6    ,  5   , 4  |   3 ,   2    ,  1     ,  0
-//      KEY , ShftLck , shft , n/a|     ,   Space, <bkspc>, <CR>
+//      KEY , ShftLck , shft , n/a|rsvd ,   Space, <bkspc>, <CR>
 // pin    11,   3     ,   4  , n/a|  19 ,    18  ,  17    ,  16
 #define SYMBOL_COUNT 26
-#define FRAME1 20
+#define FRAME1 10
+#define FRAME2 10
+#define SLOW_FRAME 100
 // want separation between dit and dah. So some dead space between them
 // if dah = 3*dit, then 1.5dit = 0.5dah.
 // So ... dead zone is between 1.5dit and 2.4dit, plus anything over 4.5dits
@@ -47,28 +49,38 @@
 //  (xxxx.8DIT:1.5DITxxxx8DAH:1.5DAHxxxxx)
 #define DIT 100
 #define MINDIT DIT*0.8
-#define MAXDIT DIT*1.5
+#define MAXDIT DIT*2
 #define DAH 3*DIT
-#define MINDAH DAH*0.8
+#define MINDAH DAH*0.9
 #define MAXDAH DAH*1.5
-#define WORDGAP DAH*5
+#define WORDGAP DAH*3
 
 // set up the physical I/O for the pins
 #define morseKey 0x01
 #define SHIFT_KEY  0x02
 #define RETURN_KEY 0x04
 #define BACK_KEY 0x08
+#define SPACE_KEY 0x10
+#define SHIFT_LOCK 0x20
 
-#define MORSE_PIN  2
+#define MORSE_PIN  1
 #define SHIFT_PIN  4
 #define SPACE_PIN 18
 #define BACKSPACE_PIN 17
 #define CR_PIN  16
+#define ASSERT_TIME 50
+
+/* macros to support the lampWord */
+#define SHIFT     0x01
+#define CAPSLOCK  0x02
+#define VALID_DIT 0x04
+#define VALID_DAH 0x08
+#define ERR_LAMP  0x80
 
 #define CAPSLOCK_LED 11
 const int ledPin =  LED_BUILTIN;// the number of the LED pin
 
-const int dahdit[SYMBOL_COUNT] = { 1,   3,    11,   13,   31,   33,   111,  113,  131,   133, 311,  313,  331,
+const unsigned dahdit[SYMBOL_COUNT] = { 1,   3,    11,   13,   31,   33,   111,  113,  131,   133, 311,  313,  331,
                                    333, 1111, 1113, 1131, 1311, 1331, 1333, 3111, 3113, 3131, 3133, 3311, 3313
                                  };
 
@@ -76,16 +88,18 @@ const int dahdit[SYMBOL_COUNT] = { 1,   3,    11,   13,   31,   33,   111,  113,
 const char txt[SYMBOL_COUNT] = {'e', 't', 'i', 'a', 'n', 'm', 's', 'u', 'r', 'w', 'd', 'k', 'g',
                                 'o', 'h', 'v', 'f', 'l', 'p', 'j', 'b', 'x', 'c', 'y', 'z', 'q'
                                };
+unsigned lampWord = 0;
 
 unsigned long last_minor = 0;
+unsigned long last_middle;
+unsigned long last_slow;
 unsigned long keyPressTime = 0;
 unsigned long silentTime = 0;
-unsigned int assertedKeys = 0;
+unsigned int assertions = 0;
 char prev_char = '^';
 
 unsigned long morseChar = 0;
 unsigned long framingSym = 0x00;
-int prevLatch = 0x00;
 
 void setup() {
   // put your setup code here, to run once:
@@ -96,6 +110,9 @@ void setup() {
   pinMode(ledPin, OUTPUT);
 //  Serial.begin(9600);
   //Keyboard.begin();
+  last_minor = millis();
+  last_middle = last_minor + (FRAME2>>1); // give half a frame offset from frame 1
+  last_slow = last_minor;
 }
 
 /*************************************************
@@ -131,37 +148,49 @@ char map_to_char(int input_symbol) {
   char return_value = (does_match == 1) ? txt[index] : '^';
   return return_value;
 }
+/****************************************************/
+unsigned morse_key_transition(unsigned long keyTime){
+  unsigned dit_or_dah = 0;
+  if ((keyTime >= MINDIT) && (keyTime <= MAXDIT)){
+    dit_or_dah = 1;
+  }
+  else if ((keyTime >= MINDAH) && (keyTime <= MAXDAH)){
+    dit_or_dah = 3;
+  }
+  return(dit_or_dah);
+}
 
 /*************************************************/
-char minor_frame(void) {
+char minor_frame(unsigned asserted) {
   unsigned long prevSilent = silentTime;
   unsigned long prevPressTime = keyPressTime;
 
   if (!digitalRead(MORSE_PIN)) {
     keyPressTime += FRAME1;
-    if (keyPressTime > 10*DAH) keyPressTime = 10*DAH;
     silentTime = 0;
-    digitalWrite(ledPin, true);
+    if (keyPressTime > 10*DAH) keyPressTime = 10*DAH;
+    if ((keyPressTime >= MINDIT) && (keyPressTime <= MAXDIT)) {
+      framingSym |= 0x01;     
+      digitalWrite(ledPin, true);
+    }
+    if((keyPressTime >= MINDAH) && (keyPressTime <= MAXDAH)) {
+      framingSym |= 0x02;  
+      digitalWrite(ledPin, true);
+    }
+    else {
+      digitalWrite(ledPin, false);
+    }
   }
   else {
-    digitalWrite(ledPin, false);
+    prevSilent = silentTime;
     silentTime = min(silentTime + FRAME1, WORDGAP);
+    digitalWrite(ledPin, false);
     
-  
-    if ((silentTime >= DIT) && (prevSilent < DIT)) {
-      if (keyPressTime > DAH) {
-        framingSym |= 0x03;
-      }
-      else if (keyPressTime > DIT) {
-        framingSym |= 0x01;
-      }
+    if ((silentTime >= 3 * FRAME1) && (prevSilent < 3 * FRAME1)) {
+      //framingSym = morse_key_transition(keyPressTime);
       keyPressTime = 0;
     }
-//    else if (keyPressTime == 0) {
-//      if (silentTime < WORDGAP) silentTime += FRAME1;
-//    }
-    if ((silentTime >= DAH) && (prevSilent < DAH)) {
-  
+    if ((silentTime >= DIT) && (prevSilent < DIT)) { 
       // push a framing symbol into the character we are building.
       if (framingSym > 0) {
         if (morseChar > 0) morseChar = morseChar * 10;
@@ -173,13 +202,43 @@ char minor_frame(void) {
       // it is time to convert the framing symbols into a keyboard character
       if ((morseChar > 0) && (morseChar <= dahdit[SYMBOL_COUNT - 1])) {
         char keyboardChar = map_to_char(morseChar);
-        if (keyboardChar != '^') Keyboard.print(keyboardChar);
+        if (keyboardChar != '^') {
+          if ((keyboardChar >= 'a') && (keyboardChar <= 'z') && (assertions & SHIFT_KEY)){
+            keyboardChar = keyboardChar & ~(0x20);
+          }        
+          Keyboard.print(keyboardChar);
+        }
         keyboardChar = '^';
-        morseChar = 0;     
       }
+      morseChar = 0;     
+      framingSym = 0;
     }
   }
   return("*");
+}
+
+unsigned middle_frame(unsigned hotKeys){
+  // shift
+  if (touchRead(SHIFT_PIN)) assertions |= SHIFT_KEY;
+  if (touchRead(SPACE_PIN)) assertions |= SPACE_KEY;
+  if (touchRead(BACKSPACE_PIN)) assertions |= BACK_KEY;
+  // shift lock
+
+  // backspace
+
+  // space
+
+  // carriage return
+  return (hotKeys);
+}
+
+int slow_frame(void) {
+  if (assertions & RETURN_KEY) Keyboard.print(0x15);
+  if (assertions & BACK_KEY) Keyboard.print(0x08);
+  if (assertions & SPACE_KEY) Keyboard.print(' ');
+  
+ 
+  assertions = assertions & SHIFT_KEY;
 }
 
 /* the main loop calls a "minor frame" at typically 10ms.   
@@ -191,6 +250,13 @@ void loop() {
   unsigned long currentMillis = millis();
   if (currentMillis - last_minor >= FRAME1) {
     last_minor = currentMillis;
-    char kb_char = minor_frame();
+    char kb_char = minor_frame(assertions);
+  }
+  if (currentMillis - last_middle >= FRAME2) {
+    last_middle = currentMillis;
+    assertions = middle_frame(assertions);
+  }
+  if (currentMillis - last_slow >= SLOW_FRAME) {
+    int slow_status = slow_frame();
   }
 }
