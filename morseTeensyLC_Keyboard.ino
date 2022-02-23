@@ -38,22 +38,22 @@
 // bit:  7  ,    6    ,  5   , 4  |   3 ,   2    ,  1     ,  0
 //      KEY , ShftLck , shft , n/a|rsvd ,   Space, <bkspc>, <CR>
 // pin    11,   3     ,   4  , n/a|  19 ,    18  ,  17    ,  16
-#define SYMBOL_COUNT 26
+#define SYMBOL_COUNT 42
 #define FRAME1 10
-#define FRAME2 10
-#define SLOW_FRAME 100
+#define FRAME2 20
+#define SLOW_FRAME 500
 // want separation between dit and dah. So some dead space between them
 // if dah = 3*dit, then 1.5dit = 0.5dah.
 // So ... dead zone is between 1.5dit and 2.4dit, plus anything over 4.5dits
 //  (xxxx...DIT......xxxx----DAH----xxxxx)
 //  (xxxx.8DIT:1.5DITxxxx8DAH:1.5DAHxxxxx)
-#define DIT 100
+#define DIT 80
 #define MINDIT DIT*0.8
 #define MAXDIT DIT*2
 #define DAH 3*DIT
 #define MINDAH DAH*0.9
 #define MAXDAH DAH*1.5
-#define WORDGAP DAH*3
+#define WORDGAP DIT*7 
 
 // set up the physical I/O for the pins
 #define morseKey 0x01
@@ -64,8 +64,8 @@
 #define SHIFT_LOCK 0x20
 
 #define MORSE_PIN  1
-#define SHIFT_PIN  4
-#define SPACE_PIN 18
+#define SHIFT_PIN 22
+#define SPACE_PIN 23
 #define BACKSPACE_PIN 17
 #define CR_PIN  16
 #define ASSERT_TIME 50
@@ -81,15 +81,23 @@
 const int ledPin =  LED_BUILTIN;// the number of the LED pin
 
 const unsigned dahdit[SYMBOL_COUNT] = { 1,   3,    11,   13,   31,   33,   111,  113,  131,   133, 311,  313,  331,
-                                   333, 1111, 1113, 1131, 1311, 1331, 1333, 3111, 3113, 3131, 3133, 3311, 3313
-                                 };
-
+      333, 1111, 1113, 1131, 1311, 1331, 1333, 3111, 3113, 3131, 3133, 3311, 3313,
+      11111, 11113, 11133, 11333, 13333, 31111, 33111, 33311, 33331, 33333,
+      113311, 131313, 133131, 311113,331133, 333111};
+//englishToMorseLib.put(".", ".-.-.-");           131313
+//        englishToMorseLib.put(",", "--..--");   331133
+//        englishToMorseLib.put("?", "..--..");   113311
+//        englishToMorseLib.put(":", "---...");   333111
+//        englishToMorseLib.put("-", "-....-");   311113
+//        englishToMorseLib.put("@", ".--.-.");   133131
+//        englishToMorseLib.put("error", "........");
 
 const char txt[SYMBOL_COUNT] = {'e', 't', 'i', 'a', 'n', 'm', 's', 'u', 'r', 'w', 'd', 'k', 'g',
-                                'o', 'h', 'v', 'f', 'l', 'p', 'j', 'b', 'x', 'c', 'y', 'z', 'q'
-                               };
+      'o', 'h', 'v', 'f', 'l', 'p', 'j', 'b', 'x', 'c', 'y', 'z', 'q',
+       '5', '4', '3', '2', '1', '6', '7', '8', '9', '0',
+       '?', '.', '@', '-', ',', ':'};
 unsigned lampWord = 0;
-
+boolean keyRelease = false;
 unsigned long last_minor = 0;
 unsigned long last_middle;
 unsigned long last_slow;
@@ -101,15 +109,25 @@ char prev_char = '^';
 unsigned long morseChar = 0;
 unsigned long framingSym = 0x00;
 
+int shift_threshold;
+int space_threshold;
+int backspace_threshold;
+
+
 void setup() {
+  
   // put your setup code here, to run once:
   pinMode(MORSE_PIN, INPUT_PULLUP);
 //  pinMode(SHIFT_PIN, INPUT);
 //  pinMode(CR_PIN, INPUT);
 //  pinMode(BACKSPACE_PIN, INPUT);
   pinMode(ledPin, OUTPUT);
-//  Serial.begin(9600);
-  //Keyboard.begin();
+  //Serial.begin(9600);
+   shift_threshold = 2 * touchRead(SHIFT_PIN);
+   space_threshold = 2 * touchRead(SPACE_PIN);
+   backspace_threshold = 2 * touchRead(BACKSPACE_PIN);
+  
+  Keyboard.begin();
   last_minor = millis();
   last_middle = last_minor + (FRAME2>>1); // give half a frame offset from frame 1
   last_slow = last_minor;
@@ -205,6 +223,7 @@ char minor_frame(unsigned asserted) {
         if (keyboardChar != '^') {
           if ((keyboardChar >= 'a') && (keyboardChar <= 'z') && (assertions & SHIFT_KEY)){
             keyboardChar = keyboardChar & ~(0x20);
+            assertions &= ~SHIFT_KEY;
           }        
           Keyboard.print(keyboardChar);
         }
@@ -218,26 +237,30 @@ char minor_frame(unsigned asserted) {
 }
 
 unsigned middle_frame(unsigned hotKeys){
-  // shift
-  if (touchRead(SHIFT_PIN)) assertions |= SHIFT_KEY;
-  if (touchRead(SPACE_PIN)) assertions |= SPACE_KEY;
-  if (touchRead(BACKSPACE_PIN)) assertions |= BACK_KEY;
-  // shift lock
-
-  // backspace
-
-  // space
-
-  // carriage return
+  // shif
+  
+  int x = touchRead(SHIFT_PIN);
+  if (x > shift_threshold) hotKeys |= SHIFT_KEY;
+  x = touchRead(SPACE_PIN);
+  if (x > space_threshold) hotKeys |= SPACE_KEY;
+  x = touchRead(BACKSPACE_PIN);
+  if (x > shift_threshold) hotKeys |= BACK_KEY;
   return (hotKeys);
 }
 
-int slow_frame(void) {
-  if (assertions & RETURN_KEY) Keyboard.print(0x15);
-  if (assertions & BACK_KEY) Keyboard.print(0x08);
-  if (assertions & SPACE_KEY) Keyboard.print(' ');
-  
- 
+int slow_frame(int keymap) {
+  keyRelease = (keyRelease == true)? false : true;
+  if (keyRelease) {
+    if (keymap & RETURN_KEY != 0) Keyboard.press(KEY_ENTER);
+    if (keymap & BACK_KEY) Keyboard.press(KEY_BACKSPACE);
+    if (keymap & SPACE_KEY) Keyboard.press(KEY_SPACE);
+  }
+  else{
+     Keyboard.release(KEY_ENTER);
+     Keyboard.release(KEY_BACKSPACE);
+     Keyboard.release(KEY_SPACE);
+  //if ((keymap & SHIFT_KEY) != 0) Keyboard.print('shift key');
+  }
   assertions = assertions & SHIFT_KEY;
 }
 
@@ -257,6 +280,7 @@ void loop() {
     assertions = middle_frame(assertions);
   }
   if (currentMillis - last_slow >= SLOW_FRAME) {
-    int slow_status = slow_frame();
+    last_slow = currentMillis;
+    int slow_status = slow_frame(assertions);
   }
 }
