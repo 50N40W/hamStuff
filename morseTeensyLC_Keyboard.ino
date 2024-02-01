@@ -50,8 +50,9 @@
 #define MINDIT DIT*0.8
 #define MAXDIT DIT*2
 #define DAH 3*DIT
-#define MINDAH DAH*0.9
-#define MAXDAH DAH*1.5
+#define MINDAH DIT*2.6
+#define MAXDAH DIT*4.5
+#define MAXKEYPRESS DAH*7
 #define CHARGAP DIT*5
 #define WORDGAP DIT*7 
 
@@ -95,6 +96,7 @@ const char txt[SYMBOL_COUNT] = {'e', 't', 'i', 'a', 'n', 'm', 's', 'u', 'r', 'w'
        '5', '4', '3', '2', '1', '6', '7', '8', '9', '0',
        '?', '.', '@', '-', ',', ':'};
 unsigned lampWord = 0;
+//unsigned framingSymbol = 0;
 boolean keyRelease = false;
 unsigned long last_minor = 0;
 unsigned long last_middle;
@@ -129,7 +131,7 @@ void setup() {
   digitalWrite(DIT_LED, true);
   digitalWrite(CR_LED, true);
 
- //Serial.begin(9600);
+   //Serial.begin(9600);
    shift_threshold = 2 * touchRead(SHIFT_PIN);
    space_threshold = 2 * touchRead(SPACE_PIN);
    backspace_threshold = 2 * touchRead(BACKSPACE_PIN);
@@ -146,18 +148,25 @@ void setup() {
 *  Binary search algorithm.  Probably something more efficient
 *  in a library somewhere, but these are kind of fun to write.
  */
-char map_to_char(int input_symbol) {
+void map_to_char(int input_symbol) {
   int i = 0;
   int top = SYMBOL_COUNT - 1;
   int index = top >> 1;
   int bottom = 0;
   int does_match = 0;
-  char return_value;
+  char keyboardChar = ' ';
   while ((i < SYMBOL_COUNT) && (does_match == 0)) {
     int prev_index = index;
     int this_one = dahdit[index];
     if (this_one == input_symbol) {
       does_match = 1;
+      keyboardChar = txt[index];
+      if ((keyboardChar >= 'a') && (keyboardChar <= 'z') && (assertions & SHIFT_KEY)){
+        keyboardChar = keyboardChar & ~(0x20);
+      }        
+      Keyboard.print(keyboardChar);
+      assertions &= ~SHIFT_KEY;
+      lampWord &= ~SHIFT_LIT;    
     }
     else {
       if (this_one < input_symbol) {
@@ -173,15 +182,7 @@ char map_to_char(int input_symbol) {
     }
     i++;
   }
-  if (does_match == 1) {
-    return_value = txt[index];
-  }
-  else{
-    return_value = '^';
-    lampWord |= ERR_LIT;
-    //digitalWrite(BACKSPACE_LED, true);
-  }
-  return return_value;
+  if (does_match ==0) lampWord |= ERR_LIT;
 }
 
 /**************************************************/
@@ -193,87 +194,48 @@ void update_lamps(void){
   digitalWrite(CR_LED,    (lampWord & CR_LIT)   != false);
 }
 
-/****************************************************/
-unsigned morse_key_transition(unsigned long keyTime){
-  unsigned dit_or_dah = 0;
-  if ((keyTime >= MINDIT) && (keyTime <= MAXDIT)){
-    dit_or_dah = 1;
-  }
-  else if ((keyTime >= MINDAH) && (keyTime <= MAXDAH)){
-    dit_or_dah = 3;
-  }
-  return(dit_or_dah);
-}
-
 /*************************************************/
 void minor_frame(unsigned asserted) {
   unsigned long prevSilent = silentTime;
 
-  if (!digitalRead(MORSE_PIN)) {
-    keyPressTime += FRAME1;
+ if (!digitalRead(MORSE_PIN)) {
+    if (keyPressTime < MAXKEYPRESS) keyPressTime += FRAME1;
     silentTime = 0;
-    if (keyPressTime > 10*DAH) keyPressTime = 10*DAH;
-    if ((keyPressTime >= MINDIT) && (keyPressTime <= MAXDIT)) {
-      framingSym |= 0x01;     
+    if ((keyPressTime > MINDIT) && (keyPressTime <= MAXDIT)){
       lampWord |= DIT_LIT;
-      lampWord &= ~DAH_LIT;
     }
-    else {
+    if ((keyPressTime > MINDAH) && (keyPressTime <= MAXDAH)) {
+      lampWord |= DAH_LIT;
       lampWord &= ~DIT_LIT;
-      if((keyPressTime >= MINDAH) && (keyPressTime <= MAXDAH)) {
-        framingSym |= 0x02;  
-        lampWord |= DAH_LIT;
-      }
-      else {
-        lampWord &= ~DAH_LIT;
-      }
     }
-  }
-  else {
-    prevSilent = silentTime;
-    silentTime = min(silentTime + FRAME1, WORDGAP);
-    if ((silentTime >= 3 * FRAME1) && (prevSilent < 3 * FRAME1)) {
-      keyPressTime = 0;   // a hint of debounce
-    }
-    if ((silentTime >= DIT) && (prevSilent < DIT)) { 
-      // push a framing symbol into the character we are building.
-      if (framingSym > 0) {
-        if (morseChar > 0) morseChar = morseChar * 10;
-        morseChar += framingSym;
-        framingSym = 0;
-      }  
-    }
-    if ((silentTime >= CHARGAP) && (prevSilent < CHARGAP)) {
-      // it is time to convert the framing symbols into a keyboard character
-      if ((morseChar > 0) && (morseChar <= dahdit[SYMBOL_COUNT - 1])) {
+ }
+ else {
+  if (silentTime < MAXKEYPRESS) silentTime += FRAME1;
+  keyPressTime = 0;
+  if ((silentTime > DIT) && (prevSilent <= DIT)) {
+      if (framingSym > 0) framingSym = framingSym * 10;
+      if(lampWord & DIT_LIT){
+        framingSym += 1;
         lampWord &= ~DIT_LIT;
+      }
+      if(lampWord & DAH_LIT) {
+        framingSym += 3;
         lampWord &= ~DAH_LIT;
-        char keyboardChar = map_to_char(morseChar);
-        if (keyboardChar != '^') {
-          if ((keyboardChar >= 'a') && (keyboardChar <= 'z') && (assertions & SHIFT_KEY)){
-            keyboardChar = keyboardChar & ~(0x20);
-            assertions &= ~SHIFT_KEY;
-          }        
-          Keyboard.print(keyboardChar);
-          lampWord &= ~SHIFT_LIT;
-        }
-        keyboardChar = '^';
       }
-      else {
-        lampWord |= ERR_LIT;
-        lampWord &= DAH_DIT_LIT;
-      }
-      morseChar = 0;     
-      framingSym = 0;
     }
   }
+  if ((silentTime > CHARGAP) && (prevSilent <= CHARGAP) && (framingSym > 0)) {
+    // translate Morse to character and send to output
+    map_to_char(framingSym);
+    framingSym = 0;
+  }
+  update_lamps();
 }
 
 unsigned middle_frame(unsigned hotKeys){
   int x = touchRead(SHIFT_PIN);
   if (x > shift_threshold){
     lampWord |= SHIFT_LIT;
-    //digitalWrite(SHIFT_LED, true);
     hotKeys |= SHIFT_KEY;
   }
   x = touchRead(SPACE_PIN);
@@ -287,7 +249,6 @@ unsigned middle_frame(unsigned hotKeys){
     hotKeys |= RETURN_KEY;
     lampWord |= CR_LIT;
   }
-
   update_lamps();  
   return (hotKeys);
 }
